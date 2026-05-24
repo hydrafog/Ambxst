@@ -185,9 +185,6 @@ PanelWindow {
 
                 // Notify flickable when manually scrolling
                 onActiveChanged: {
-                    if (presetsLoader.item) {
-                        presetsLoader.item.isManualScrolling = active;
-                    }
                 }
 
                 onPositionChanged: {

@@ -9,27 +9,28 @@ WALLPAPER="$1"
 SHADER="$2"
 MONITOR="${3:-ALL}"
 
-# When a specific monitor is targeted, we don't kill all mpvpaper instances,
-# just the one for that monitor if possible. However mpvpaper doesn't
-# natively support killing by monitor easily via pkill.
-# For now, we'll kill by checking the command line args if MONITOR != ALL.
-# We must avoid killing this script itself, so we filter by the exact executable name.
-if [ "$MONITOR" = "ALL" ]; then
-    pkill -x "mpvpaper" 2>/dev/null
-else
-    pgrep -x mpvpaper | while read -r pid; do
-        if ps -p "$pid" -o args= | grep -q "$MONITOR"; then
-            kill "$pid" 2>/dev/null
-        fi
-    done
-fi
+# Kill existing mpvpaper instances for this specific monitor
+# Use the IPC socket as a unique identifier since it contains the monitor name
 SOCKET="/tmp/ambxst_mpv_socket_${MONITOR}"
 
-MPV_OPTS="no-audio loop hwdec=auto scale=bilinear interpolation=no video-sync=display-resample panscan=1.0 video-scale-x=1.0 video-scale-y=1.0 load-scripts=no input-ipc-server=$SOCKET"
+# Find and kill mpvpaper processes associated with this monitor/socket
+pgrep -x mpvpaper 2>/dev/null | while read -r pid; do
+	cmdline=$(ps -p "$pid" -o args= 2>/dev/null)
+	# Kill if it's running on the same monitor OR using the same socket
+	if echo "$cmdline" | grep -q " $MONITOR$\| $MONITOR \|input-ipc-server=$SOCKET"; then
+		kill "$pid" 2>/dev/null
+		# Wait briefly for graceful exit
+		sleep 0.2
+		# Force kill if still running
+		kill -9 "$pid" 2>/dev/null
+	fi
+done
 
-# Si el shader no está vacío y el archivo existe, agregarlo a MPV_OPTS
+MPV_OPTS="no-audio loop hwdec=auto vo=gpu-next profile=fast interpolation=no video-sync=display-resample panscan=1.0 load-scripts=no input-ipc-server=$SOCKET cache-pause=no"
+
+# If shader is provided and file exists, add it to MPV_OPTS
 if [ -n "$SHADER" ] && [ -f "$SHADER" ]; then
-	MPV_OPTS="$MPV_OPTS glsl-shaders=$SHADER"
+	MPV_OPTS="$MPV_OPTS glsl-shaders=\"$SHADER\""
 fi
 
-nohup mpvpaper -o "$MPV_OPTS" "$MONITOR" "$WALLPAPER" >/tmp/mpvpaper.log 2>&1 &
+exec mpvpaper -o "$MPV_OPTS" "$MONITOR" "$WALLPAPER"

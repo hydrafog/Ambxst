@@ -19,7 +19,7 @@ Singleton {
     readonly property string configDir: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/ambxst"
     readonly property string presetsDir: configDir + "/presets"
     readonly property string assetsPresetsDir: Qt.resolvedUrl("../../assets/presets").toString().replace("file://", "")
-    readonly property string activePresetFile: presetsDir + "/active_preset"
+    readonly property string activePresetFile: (Quickshell.env("XDG_CACHE_HOME") || (Quickshell.env("HOME") + "/.cache")) + "/ambxst/active_preset"
 
     // Files to exclude from presets (never saved, loaded, or shown)
     readonly property var excludedFiles: ["system.json", "ai.json", "prefix.json", "weather.json"]

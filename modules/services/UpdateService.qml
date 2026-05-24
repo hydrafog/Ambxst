@@ -154,7 +154,7 @@ Singleton {
                 root.nextCheckTime = Date.now() + 8 * 3600000;
                 root.saveCache();
             } else if (action === "update") {
-                const updateCmd = "kitty -o allow_remote_control=yes --listen-on unix:/tmp/mykitty sh -c \"sleep 0.2 && kitten @ --to unix:/tmp/mykitty send-text 'ambxst update'; exec $SHELL\"";
+                const updateCmd = "ghostty -e \"ambxst update\"";
                 Quickshell.execDetached(["bash", "-c", updateCmd]);
             }
         }

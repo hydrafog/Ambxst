@@ -111,8 +111,7 @@ Singleton {
         "pavucontrol-qt": "pavucontrol",
         "wps": "wps-office2019-kprometheus",
         "wpsoffice": "wps-office2019-kprometheus",
-        "footclient": "foot",
-        "zen": "zen-browser",
+        "footclient": "foot"
     })
     property list<var> regexSubstitutions: [
         {

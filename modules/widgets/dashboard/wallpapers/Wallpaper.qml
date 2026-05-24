@@ -1,4 +1,5 @@
 import QtQuick
+import QtMultimedia
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Io
@@ -813,7 +814,14 @@ PanelWindow {
 
         onExited: {
             console.log("Matugen with config finished");
+            hyprshadeRecoveryProcess.running = true;
         }
+    }
+
+    Process {
+        id: hyprshadeRecoveryProcess
+        running: false
+        command: ["systemctl", "--user", "restart", "hyprshade.service"]
     }
 
     Process {
@@ -839,6 +847,7 @@ PanelWindow {
 
         onExited: {
             console.log("Matugen normal finished");
+            hyprshadeRecoveryProcess.running = true;
         }
     }
 
@@ -1234,10 +1243,10 @@ PanelWindow {
         Process {
             id: killMpvpaperProcess
             running: false
-            command: ["pkill", "-f", wallpaper.mpvSocket]
+            command: wallpaper.currentScreenName ? ["bash", "-c", "pkill -9 -f 'mpvpaper.*" + wallpaper.currentScreenName + "' 2>/dev/null; exit 0"] : ["true"]
 
             onExited: function (exitCode) {
-                console.log("Killed mpvpaper processes on socket", wallpaper.mpvSocket, ", exit code:", exitCode);
+                console.log("Killed mpvpaper processes for monitor", wallpaper.currentScreenName, ", exit code:", exitCode);
             }
         }
 
@@ -1324,6 +1333,59 @@ PanelWindow {
                 property string sourceFile: parent.sourceFile
                 property bool tint: wallpaper.tintEnabled
 
+                // Force re-renders for post-processing shaders (like noise/grain)
+                AnimatedImage {
+                    id: noiseTrigger
+                    source: "data:image/gif;base64,R0lGODlhAQABAPAAAAAAABEhICH/C05FVFNDQVBFMi4wAwEAAAAh+QQFCAAAACwAAAAAAQABAAACAkQBADsAIfkEBQgAAAAsAAAAAAEAAQAAAgJEAQA7"
+                    width: 2
+                    height: 2
+                    opacity: 0.02
+                    visible: true
+                    playing: true
+                    cache: false
+                }
+
+                MediaPlayer {
+                    id: noiseVideoPlayer
+                    source: "file://" + Quickshell.shellDir + "/assets/invisible_loop.webm"
+                    videoOutput: noiseVideoOutput
+                    loops: MediaPlayer.Infinite
+                    audioOutput: AudioOutput { muted: true }
+
+                    Component.onCompleted: {
+                        noiseVideoPlayer.play();
+                    }
+                }
+
+                VideoOutput {
+                    id: noiseVideoOutput
+                    width: 1
+                    height: 1
+                    opacity: 0.005
+                    visible: true
+                    anchors.bottom: parent.bottom
+                    anchors.right: parent.right
+                }
+
+                // Continuous frame dirtying driver for Wayland compositors to force redraws
+                Rectangle {
+                    width: 1
+                    height: 1
+                    color: "transparent"
+                    opacity: 0.01
+                    visible: true
+                    anchors.bottom: parent.bottom
+                    anchors.right: parent.right
+
+                    NumberAnimation on opacity {
+                        from: 0.01
+                        to: 0.02
+                        duration: 1000
+                        loops: Animation.Infinite
+                        running: true
+                    }
+                }
+
                 // Subset of colors for optimization (approx 25 colors vs 98)
                 readonly property var optimizedPalette: ["background", "overBackground", "shadow", "surface", "surfaceBright", "surfaceDim", "surfaceContainer", "surfaceContainerHigh", "surfaceContainerHighest", "surfaceContainerLow", "surfaceContainerLowest", "primary", "secondary", "tertiary", "red", "lightRed", "green", "lightGreen", "blue", "lightBlue", "yellow", "lightYellow", "cyan", "lightCyan", "magenta", "lightMagenta"]
 
@@ -1375,6 +1437,15 @@ PanelWindow {
                         property real paletteSize: staticImageRoot.optimizedPalette.length
                         property real texWidth: rawImage.width
                         property real texHeight: rawImage.height
+                        property real time: 0.0
+
+                        NumberAnimation on time {
+                            from: 0.0
+                            to: 3600.0
+                            duration: 3600000 // 1 hour loop
+                            loops: Animation.Infinite
+                            running: true
+                        }
 
                         vertexShader: "palette.vert.qsb"
                         fragmentShader: "palette.frag.qsb"
@@ -1389,9 +1460,21 @@ PanelWindow {
                 property string sourceFile: parent.sourceFile
                 property string scriptPath: decodeURIComponent(Qt.resolvedUrl("mpvpaper.sh").toString().replace("file://", ""))
 
+                // Explicitly kill old mpvpaper processes before starting new ones
+                Process {
+                    id: mpvpaperKillProcess
+                    running: false
+                    command: wallpaper.currentScreenName ? ["bash", "-c", "pkill -f 'mpvpaper.*" + wallpaper.currentScreenName + "' 2>/dev/null; pkill -f 'input-ipc-server=/tmp/ambxst_mpv_socket_" + wallpaper.currentScreenName + "' 2>/dev/null; exit 0"] : []
+                    onExited: function (exitCode) {
+                        if (sourceFile) {
+                            mpvpaperRestartTimer.restart();
+                        }
+                    }
+                }
+
                 Timer {
                     id: mpvpaperRestartTimer
-                    interval: 100
+                    interval: 150
                     onTriggered: {
                         if (sourceFile) {
                             console.log("Restarting mpvpaper for:", sourceFile);
@@ -1404,8 +1487,11 @@ PanelWindow {
                 onSourceFileChanged: {
                     if (sourceFile) {
                         console.log("Source file changed to:", sourceFile);
+                        // Stop current process and explicitly kill old ones before restarting
                         mpvpaperProcess.running = false;
-                        mpvpaperRestartTimer.restart();
+                        mpvpaperRestartTimer.stop();
+                        // Kill old processes first, then restart via onExited callback
+                        mpvpaperKillProcess.running = true;
                     }
                 }
 
@@ -1417,9 +1503,13 @@ PanelWindow {
                     }
                 }
 
-                Component.onDestruction:
-                // mpvpaper script handles killing previous instances
-                {}
+                Component.onDestruction: {
+                    // Kill mpvpaper when this component is destroyed
+                    // The mpvpaper.sh script uses exec so the Process manages it directly
+                    if (mpvpaperProcess.running) {
+                        mpvpaperProcess.running = false;
+                    }
+                }
 
                 Process {
                     id: mpvpaperProcess

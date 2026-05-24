@@ -3,7 +3,7 @@
 
 with pkgs; [
   # Terminal
-  kitty
+  ghostty
   tmux
 
   # Launcher
