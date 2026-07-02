@@ -814,14 +814,7 @@ PanelWindow {
 
         onExited: {
             console.log("Matugen with config finished");
-            hyprshadeRecoveryProcess.running = true;
         }
-    }
-
-    Process {
-        id: hyprshadeRecoveryProcess
-        running: false
-        command: ["systemctl", "--user", "restart", "hyprshade.service"]
     }
 
     Process {
@@ -847,7 +840,6 @@ PanelWindow {
 
         onExited: {
             console.log("Matugen normal finished");
-            hyprshadeRecoveryProcess.running = true;
         }
     }
 
@@ -1098,7 +1090,9 @@ PanelWindow {
                                     wallpaperConfig.adapter.currentWall = wallpaperPaths[0];
                                 }
                                 initialLoadCompleted = true;
-                                // runMatugenForCurrentWallpaper() will be called by onCurrentWallChanged
+                                // onCurrentWallChanged fired before _wallpaperDirInitialized was true,
+                                // so matugen was skipped. Trigger it explicitly now.
+                                Qt.callLater(runMatugenForCurrentWallpaper);
                             }
                         }
                     }
@@ -1155,7 +1149,9 @@ PanelWindow {
                                 wallpaperConfig.adapter.currentWall = wallpaperPaths[0];
                             }
                             initialLoadCompleted = true;
-                            // runMatugenForCurrentWallpaper() will be called by onCurrentWallChanged
+                            // onCurrentWallChanged fired before _wallpaperDirInitialized was true,
+                            // so matugen was skipped. Trigger it explicitly now.
+                            Qt.callLater(runMatugenForCurrentWallpaper);
                         }
                     }
                 }
@@ -1334,14 +1330,25 @@ PanelWindow {
                 property bool tint: wallpaper.tintEnabled
 
                 // Force re-renders for post-processing shaders (like noise/grain)
+                Connections {
+                    target: staticImageRoot
+                    function onTintChanged() {
+                        if (staticImageRoot.tint) {
+                            noiseVideoPlayer.play();
+                        } else {
+                            noiseVideoPlayer.stop();
+                        }
+                    }
+                }
+
                 AnimatedImage {
                     id: noiseTrigger
                     source: "data:image/gif;base64,R0lGODlhAQABAPAAAAAAABEhICH/C05FVFNDQVBFMi4wAwEAAAAh+QQFCAAAACwAAAAAAQABAAACAkQBADsAIfkEBQgAAAAsAAAAAAEAAQAAAgJEAQA7"
                     width: 2
                     height: 2
                     opacity: 0.02
-                    visible: true
-                    playing: true
+                    visible: staticImageRoot.tint
+                    playing: staticImageRoot.tint
                     cache: false
                 }
 
@@ -1353,7 +1360,9 @@ PanelWindow {
                     audioOutput: AudioOutput { muted: true }
 
                     Component.onCompleted: {
-                        noiseVideoPlayer.play();
+                        if (staticImageRoot.tint) {
+                            noiseVideoPlayer.play();
+                        }
                     }
                 }
 
@@ -1362,7 +1371,7 @@ PanelWindow {
                     width: 1
                     height: 1
                     opacity: 0.005
-                    visible: true
+                    visible: staticImageRoot.tint
                     anchors.bottom: parent.bottom
                     anchors.right: parent.right
                 }
@@ -1373,7 +1382,7 @@ PanelWindow {
                     height: 1
                     color: "transparent"
                     opacity: 0.01
-                    visible: true
+                    visible: staticImageRoot.tint
                     anchors.bottom: parent.bottom
                     anchors.right: parent.right
 
@@ -1382,7 +1391,7 @@ PanelWindow {
                         to: 0.02
                         duration: 1000
                         loops: Animation.Infinite
-                        running: true
+                        running: staticImageRoot.tint
                     }
                 }
 
