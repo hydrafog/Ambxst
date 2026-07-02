@@ -630,6 +630,9 @@ help | --help | -h)
 	export QT_QPA_PLATFORMTHEME=qt6ct
 	unset HL_INITIAL_WORKSPACE_TOKEN
 
+	# Use the basic render loop (single-threaded) to save memory and thread overhead
+	export QSG_RENDER_LOOP=basic
+
 	# Cache this script's PID before exec (for fast PID lookups in future CLI calls)
 	echo $$ >/tmp/ambxst.pid
 
